@@ -8,8 +8,10 @@ import matplotlib
 matplotlib.use('Agg')
 import warnings
 warnings.filterwarnings('ignore')
+import io
+import speech_recognition as sr
 
-# ── Page config ──────────────────────────────────────────────────────────────
+# ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="FarmVoice AI",
     page_icon="🌾",
@@ -17,7 +19,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ── Custom CSS ────────────────────────────────────────────────────────────────
+# ── Custom CSS ─────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500&display=swap');
@@ -128,21 +130,7 @@ html, body, [class*="css"] {
     opacity: 0.8;
     margin-top: 4px;
 }
-.result-emoji {
-    font-size: 4rem;
-}
-
-/* Explanation pill */
-.factor-pill {
-    display: inline-block;
-    padding: 6px 16px;
-    border-radius: 20px;
-    font-size: 0.85rem;
-    font-weight: 500;
-    margin: 4px;
-}
-.factor-positive { background: #d1fae5; color: #065f46; }
-.factor-negative { background: #fee2e2; color: #991b1b; }
+.result-emoji { font-size: 4rem; }
 
 /* Stats row */
 .stat-box {
@@ -166,13 +154,12 @@ html, body, [class*="css"] {
     margin-top: 4px;
 }
 
-/* Voice box */
-.voice-box {
+/* Mic instruction box */
+.mic-box {
     background: linear-gradient(135deg, #f0fdf4, #dcfce7);
-    border: 2px dashed var(--green-light);
+    border: 2px solid var(--green-light);
     border-radius: 16px;
-    padding: 24px;
-    text-align: center;
+    padding: 20px 24px;
     margin: 16px 0;
 }
 
@@ -180,9 +167,7 @@ html, body, [class*="css"] {
 section[data-testid="stSidebar"] {
     background: var(--green-dark) !important;
 }
-section[data-testid="stSidebar"] * {
-    color: white !important;
-}
+section[data-testid="stSidebar"] * { color: white !important; }
 section[data-testid="stSidebar"] .stSlider > div > div > div {
     background: var(--green-light) !important;
 }
@@ -206,12 +191,10 @@ section[data-testid="stSidebar"] .stSlider > div > div > div {
     box-shadow: 0 8px 24px rgba(45,106,79,0.35) !important;
 }
 
-/* Hide streamlit default elements */
 #MainMenu {visibility: hidden;}
 footer {visibility: hidden;}
 header {visibility: hidden;}
 
-/* Tabs */
 .stTabs [data-baseweb="tab-list"] {
     background: #f3f4f6;
     border-radius: 12px;
@@ -222,7 +205,6 @@ header {visibility: hidden;}
     font-weight: 500;
 }
 
-/* Scrollbar */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: #f1f1f1; }
 ::-webkit-scrollbar-thumb { background: var(--green-light); border-radius: 3px; }
@@ -246,7 +228,7 @@ def get_explainer(_model):
 model, le = load_model()
 explainer = get_explainer(model)
 
-# ── Crop emoji map ────────────────────────────────────────────────────────────
+# ── Constants ─────────────────────────────────────────────────────────────────
 CROP_EMOJI = {
     'rice': '🌾', 'wheat': '🌾', 'maize': '🌽', 'chickpea': '🫘',
     'kidneybeans': '🫘', 'pigeonpeas': '🫘', 'mothbeans': '🫘',
@@ -258,13 +240,9 @@ CROP_EMOJI = {
 }
 
 FEATURE_LABELS = {
-    'N': 'Nitrogen (N)',
-    'P': 'Phosphorus (P)',
-    'K': 'Potassium (K)',
-    'temperature': 'Temperature',
-    'humidity': 'Humidity',
-    'ph': 'Soil pH',
-    'rainfall': 'Rainfall',
+    'N': 'Nitrogen (N)', 'P': 'Phosphorus (P)', 'K': 'Potassium (K)',
+    'temperature': 'Temperature', 'humidity': 'Humidity',
+    'ph': 'Soil pH', 'rainfall': 'Rainfall',
 }
 
 FEATURE_TIPS = {
@@ -277,13 +255,48 @@ FEATURE_TIPS = {
     'rainfall': 'Average annual rainfall in mm.',
 }
 
+
+# ── Server-side speech-to-text ────────────────────────────────────────────────
+def transcribe_audio(audio_bytes: bytes) -> str:
+    """
+    Transcribe audio bytes using Google Speech Recognition (server-side).
+    Works with the WAV/webm bytes returned by st.audio_input.
+    No iframe hacks, no browser JS, no CORS issues.
+    """
+    recognizer = sr.Recognizer()
+    audio_file = io.BytesIO(audio_bytes)
+    try:
+        with sr.AudioFile(audio_file) as source:
+            audio_data = recognizer.record(source)
+        text = recognizer.recognize_google(audio_data, language="en-IN")
+        return text
+    except sr.UnknownValueError:
+        return ""
+    except sr.RequestError as e:
+        st.error(f"Speech Recognition API error: {e}")
+        return ""
+    except Exception as e:
+        # Fallback: some browsers send webm; try converting with pydub if available
+        try:
+            from pydub import AudioSegment
+            audio_file.seek(0)
+            sound = AudioSegment.from_file(audio_file)
+            wav_io = io.BytesIO()
+            sound.export(wav_io, format="wav")
+            wav_io.seek(0)
+            with sr.AudioFile(wav_io) as source:
+                audio_data = recognizer.record(source)
+            return recognizer.recognize_google(audio_data, language="en-IN")
+        except Exception:
+            st.warning("Could not process audio format. Please type your description instead.")
+            return ""
+
+
 # ── NLP voice parser ──────────────────────────────────────────────────────────
 def parse_voice_input(text: str) -> dict:
-    """Extract farm features from natural language description."""
     text = text.lower()
     features = {}
 
-    # Nitrogen
     if any(w in text for w in ['very fertile', 'very rich soil', 'high nitrogen', 'lots of manure']):
         features['N'] = 100
     elif any(w in text for w in ['fertile', 'rich soil', 'good soil', 'dark soil', 'black soil']):
@@ -293,7 +306,6 @@ def parse_voice_input(text: str) -> dict:
     else:
         features['N'] = 50
 
-    # Phosphorus
     if any(w in text for w in ['bean', 'pulse', 'legume', 'dal', 'chickpea']):
         features['P'] = 80
     elif any(w in text for w in ['fruit', 'mango', 'banana', 'orchard']):
@@ -301,7 +313,6 @@ def parse_voice_input(text: str) -> dict:
     else:
         features['P'] = 50
 
-    # Potassium
     if any(w in text for w in ['good harvest', 'healthy crop', 'strong plant']):
         features['K'] = 70
     elif any(w in text for w in ['disease', 'weak', 'poor yield']):
@@ -309,7 +320,6 @@ def parse_voice_input(text: str) -> dict:
     else:
         features['K'] = 45
 
-    # Temperature
     if any(w in text for w in ['very hot', 'extreme heat', 'scorching', 'desert']):
         features['temperature'] = 38
     elif any(w in text for w in ['hot', 'warm', 'summer', 'tropical']):
@@ -321,7 +331,6 @@ def parse_voice_input(text: str) -> dict:
     else:
         features['temperature'] = 25
 
-    # Humidity
     if any(w in text for w in ['very humid', 'coastal', 'very wet', 'paddy', 'rice field']):
         features['humidity'] = 85
     elif any(w in text for w in ['humid', 'wet', 'rainy season', 'monsoon']):
@@ -331,7 +340,6 @@ def parse_voice_input(text: str) -> dict:
     else:
         features['humidity'] = 55
 
-    # pH
     if any(w in text for w in ['black soil', 'dark soil', 'cotton soil', 'regur']):
         features['ph'] = 7.8
     elif any(w in text for w in ['red soil', 'laterite', 'acidic']):
@@ -343,7 +351,6 @@ def parse_voice_input(text: str) -> dict:
     else:
         features['ph'] = 6.8
 
-    # Rainfall
     if any(w in text for w in ['heavy rain', 'floods', 'very rainy', '200mm', '300mm']):
         features['rainfall'] = 250
     elif any(w in text for w in ['good rain', 'monsoon', 'rainy', '100mm', '150mm']):
@@ -357,22 +364,20 @@ def parse_voice_input(text: str) -> dict:
 
     return features
 
-# ── Predict & explain ─────────────────────────────────────────────────────────
-def predict_and_explain(features: dict):
-    input_df = pd.DataFrame([features])
-    feature_cols = ['N', 'P', 'K', 'temperature', 'humidity', 'ph', 'rainfall']
-    input_df = input_df[feature_cols]
 
-    pred_enc = model.predict(input_df)[0]
+# ── Predict & explain ──────────────────────────────────────────────────────────
+def predict_and_explain(features: dict):
+    feature_cols = ['N', 'P', 'K', 'temperature', 'humidity', 'ph', 'rainfall']
+    input_df = pd.DataFrame([features])[feature_cols]
+
+    pred_enc   = model.predict(input_df)[0]
     pred_proba = model.predict_proba(input_df)[0]
     confidence = pred_proba.max() * 100
-    crop = le.inverse_transform([pred_enc])[0]
+    crop       = le.inverse_transform([pred_enc])[0]
 
-    # Top 3 alternatives
     top3_idx = np.argsort(pred_proba)[::-1][:3]
     top3 = [(le.inverse_transform([i])[0], pred_proba[i]*100) for i in top3_idx]
 
-    # SHAP
     shap_values = explainer.shap_values(input_df)
     if isinstance(shap_values, list):
         shap_for_pred = shap_values[pred_enc]
@@ -383,59 +388,50 @@ def predict_and_explain(features: dict):
         shap_for_pred[0] if shap_for_pred.ndim > 1 else shap_for_pred,
         index=feature_cols
     )
-
     return crop, confidence, top3, shap_series, input_df
 
-def plain_english_explanation(crop, shap_series, features):
-    """Generate human-readable explanation."""
-    sorted_factors = shap_series.abs().sort_values(ascending=False)
-    top3_features = sorted_factors.index[:3].tolist()
 
+def plain_english_explanation(crop, shap_series, features):
+    sorted_factors = shap_series.abs().sort_values(ascending=False)
+    top3_features  = sorted_factors.index[:3].tolist()
     lines = []
     for feat in top3_features:
-        val = shap_series[feat]
+        val   = shap_series[feat]
         label = FEATURE_LABELS[feat]
-        raw = features[feat]
-        unit = '°C' if feat == 'temperature' else '%' if feat == 'humidity' else ' mm' if feat == 'rainfall' else ''
+        raw   = features[feat]
+        unit  = '°C' if feat=='temperature' else '%' if feat=='humidity' else ' mm' if feat=='rainfall' else ''
         if val > 0.01:
             lines.append(f"✅ **{label}** ({raw:.1f}{unit}) strongly favors **{crop}**")
         elif val < -0.01:
             lines.append(f"⚠️ **{label}** ({raw:.1f}{unit}) slightly reduces confidence, but {crop} remains best")
         else:
             lines.append(f"➡️ **{label}** ({raw:.1f}{unit}) has neutral effect")
-
     return lines
+
 
 def plot_shap(shap_series, crop):
     fig, ax = plt.subplots(figsize=(8, 4))
     fig.patch.set_facecolor('#ffffff')
     ax.set_facecolor('#f9fafb')
-
     colors = ['#2d6a4f' if v > 0 else '#dc2626' for v in shap_series.values]
     labels = [FEATURE_LABELS.get(f, f) for f in shap_series.index]
-
-    bars = ax.barh(labels, shap_series.values, color=colors, edgecolor='none', height=0.6)
-
+    bars   = ax.barh(labels, shap_series.values, color=colors, edgecolor='none', height=0.6)
     ax.axvline(x=0, color='#1a1a1a', linewidth=1.2, alpha=0.5)
     ax.set_xlabel('SHAP Value (Impact on Prediction)', fontsize=10, color='#6b7280')
-    ax.set_title(f'Why the AI recommends {crop.upper()}', fontsize=12, fontweight='bold', color='#1a3a2a', pad=12)
-
+    ax.set_title(f'Why the AI recommends {crop.upper()}', fontsize=12,
+                 fontweight='bold', color='#1a3a2a', pad=12)
     for bar, val in zip(bars, shap_series.values):
-        ax.text(
-            val + (0.005 if val >= 0 else -0.005),
-            bar.get_y() + bar.get_height()/2,
-            f'{val:+.3f}',
-            va='center', ha='left' if val >= 0 else 'right',
-            fontsize=9, color='#374151', fontweight='500'
-        )
-
+        ax.text(val + (0.005 if val >= 0 else -0.005),
+                bar.get_y() + bar.get_height()/2,
+                f'{val:+.3f}', va='center',
+                ha='left' if val >= 0 else 'right',
+                fontsize=9, color='#374151', fontweight='500')
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.spines['left'].set_visible(False)
     ax.tick_params(axis='y', labelsize=10, colors='#374151')
     ax.tick_params(axis='x', labelsize=9, colors='#9ca3af')
     ax.grid(axis='x', linestyle='--', alpha=0.4, color='#d1d5db')
-
     plt.tight_layout()
     return fig
 
@@ -444,7 +440,6 @@ def plot_shap(shap_series, crop):
 # MAIN UI
 # ══════════════════════════════════════════════════════════════════════════════
 
-# Hero header
 st.markdown("""
 <div class="hero-header">
     <div class="hero-badge">XAI · Agri-Tech · India</div>
@@ -453,7 +448,6 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Stats row
 col1, col2, col3, col4 = st.columns(4)
 with col1:
     st.markdown('<div class="stat-box"><div class="stat-num">22</div><div class="stat-label">Crops Supported</div></div>', unsafe_allow_html=True)
@@ -466,163 +460,97 @@ with col4:
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# ── Sidebar ───────────────────────────────────────────────────────────────────
+# ── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("### 🌱 Farm Parameters")
     st.markdown("---")
     st.markdown("**Soil Nutrients**")
-    N   = st.slider("Nitrogen (N) kg/ha",    0, 140, 60, help=FEATURE_TIPS['N'])
-    P   = st.slider("Phosphorus (P) kg/ha",  5, 145, 50, help=FEATURE_TIPS['P'])
-    K   = st.slider("Potassium (K) kg/ha",   5, 205, 50, help=FEATURE_TIPS['K'])
+    N           = st.slider("Nitrogen (N) kg/ha",    0,   140, 60,  help=FEATURE_TIPS['N'])
+    P           = st.slider("Phosphorus (P) kg/ha",  5,   145, 50,  help=FEATURE_TIPS['P'])
+    K           = st.slider("Potassium (K) kg/ha",   5,   205, 50,  help=FEATURE_TIPS['K'])
     st.markdown("**Climate**")
-    temperature = st.slider("Temperature (°C)", 5, 45, 25, help=FEATURE_TIPS['temperature'])
-    humidity    = st.slider("Humidity (%)",     20, 100, 60, help=FEATURE_TIPS['humidity'])
-    rainfall    = st.slider("Rainfall (mm)",    20, 300, 100, help=FEATURE_TIPS['rainfall'])
+    temperature = st.slider("Temperature (°C)",       5,   45,  25,  help=FEATURE_TIPS['temperature'])
+    humidity    = st.slider("Humidity (%)",           20,  100, 60,  help=FEATURE_TIPS['humidity'])
+    rainfall    = st.slider("Rainfall (mm)",          20,  300, 100, help=FEATURE_TIPS['rainfall'])
     st.markdown("**Soil**")
-    ph = st.slider("Soil pH", 3.5, 9.5, 6.5, step=0.1, help=FEATURE_TIPS['ph'])
-
+    ph          = st.slider("Soil pH",                3.5, 9.5, 6.5, step=0.1, help=FEATURE_TIPS['ph'])
     st.markdown("---")
     st.markdown("**About FarmVoice AI**")
     st.markdown("Built by **Akash M S** | Presidency University, Bangalore")
     st.markdown("Powered by Random Forest + SHAP XAI")
-from streamlit_webrtc import webrtc_streamer, AudioProcessorBase, WebRtcMode
-import numpy as np
-import speech_recognition as sr
-import tempfile
-import wave
 
-class AudioProcessor(AudioProcessorBase):
-    def __init__(self):
-        self.frames = []
 
-    def recv(self, frame):
-        audio = frame.to_ndarray()
-        self.frames.append(audio)
-        return frame
-
-def speech_to_text(audio_frames):
-    if len(audio_frames) == 0:
-        return ""
-
-    # Save audio temporarily
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
-
-    wf = wave.open(temp_file.name, 'wb')
-    wf.setnchannels(1)
-    wf.setsampwidth(2)
-    wf.setframerate(16000)
-
-    audio_data = np.concatenate(audio_frames)
-    wf.writeframes(audio_data.tobytes())
-    wf.close()
-
-    recognizer = sr.Recognizer()
-    with sr.AudioFile(temp_file.name) as source:
-        audio = recognizer.record(source)
-
-    try:
-        text = recognizer.recognize_google(audio)
-    except:
-        text = "Could not understand audio"
-
-    return text
-# ── Main content ──────────────────────────────────────────────────────────────
+# ── Tabs ───────────────────────────────────────────────────────────────────────
 tab1, tab2, tab3 = st.tabs(["🎙️ Voice / Text Input", "🎛️ Manual Input", "📊 Model Insights"])
 
-# ─── TAB 1: Voice / Text ─────────────────────────────────────────────────────
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TAB 1  ·  Voice / Text Input
+# ─────────────────────────────────────────────────────────────────────────────
 with tab1:
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown('<div class="card-title">Describe Your Farm in Plain Language</div>', unsafe_allow_html=True)
-    st.markdown('<div class="card-subtitle">Type naturally — in English, Hindi transliteration, or Kannada transliteration. The AI will understand.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="card-subtitle">Record your voice OR type naturally. The AI will understand English, Hindi transliteration, or Kannada transliteration.</div>', unsafe_allow_html=True)
 
+    # ── HOW IT WORKS (mic instructions) ──────────────────────────────────────
     st.markdown("""
-    <div class="voice-box">
-        <div style="font-size:2.5rem">🎙️</div>
-        <div style="font-weight:600; color:#2d6a4f; margin:8px 0">Speak or Type Your Farm Description</div>
-        <div style="font-size:0.85rem; color:#6b7280">Click below → allow mic → speak → your words appear instantly</div>
+    <div class="mic-box">
+        <div style="font-size:1.6rem; margin-bottom:6px;">🎙️ How to use Voice Input</div>
+        <ol style="margin:0; padding-left:18px; color:#2d6a4f; font-size:0.92rem; line-height:1.9;">
+            <li>Click <strong>"Record"</strong> below → browser asks for microphone permission → allow it</li>
+            <li>Speak your farm description clearly (e.g. <em>"My soil is black, monsoon rain, very hot"</em>)</li>
+            <li>Click <strong>"Stop"</strong> when done</li>
+            <li>Click <strong>"🔊 Transcribe Voice"</strong> — your words appear in the text box automatically</li>
+            <li>Click <strong>"🌾 Analyze My Farm"</strong> to get your crop recommendation</li>
+        </ol>
     </div>
-
-    <div style="display:flex; justify-content:center; margin:14px 0; gap:12px; flex-wrap:wrap;">
-        <button id="micBtn" onclick="startVoice()" style="background:#1a3a2a;color:white;border:none;padding:12px 32px;border-radius:24px;font-size:1rem;cursor:pointer;font-weight:600;">🎙️ Click to Speak</button>
-        <button onclick="clearVoice()" style="background:transparent;color:#6b7280;border:1px solid #d1d5db;padding:12px 20px;border-radius:24px;font-size:0.9rem;cursor:pointer;">✕ Clear</button>
-    </div>
-    <div id="voiceStatus" style="text-align:center;font-size:0.85rem;color:#6b7280;margin:6px 0;min-height:22px;"></div>
-    <div id="voiceResult" style="display:none;background:#111;border:2px solid #52b788;border-radius:10px;padding:14px 18px;font-size:1rem;color:#fff;margin:10px 0;line-height:1.5;">
-        <span style="font-size:0.72rem;color:#52b788;letter-spacing:1px;text-transform:uppercase;">You said:</span><br>
-        <span id="voiceText" style="font-weight:500;"></span>
-    </div>
-    <script>
-    function startVoice() {
-        var btn=document.getElementById('micBtn');
-        var status=document.getElementById('voiceStatus');
-        var resultDiv=document.getElementById('voiceResult');
-        var voiceTextEl=document.getElementById('voiceText');
-        var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-        if(!SR){status.innerHTML='<span style="color:#dc2626">⚠️ Use Chrome or Edge for voice input</span>';return;}
-        var r=new SR();
-        r.lang='en-IN';r.interimResults=true;r.maxAlternatives=1;r.continuous=false;
-        btn.innerHTML='🔴 Listening...';btn.style.background='#dc2626';
-        status.innerHTML='<span style="color:#2d6a4f;font-weight:500;">🎤 Listening — describe your farm now</span>';
-        r.start();
-        r.onresult=function(e){
-            var interim='',final='';
-            for(var i=e.resultIndex;i<e.results.length;i++){
-                if(e.results[i].isFinal){final+=e.results[i][0].transcript;}
-                else{interim+=e.results[i][0].transcript;}
-            }
-            var cur=final||interim;
-            voiceTextEl.innerText=cur;
-            resultDiv.style.display='block';
-            if(final){
-                status.innerHTML='<span style="color:#2d6a4f">✅ Done! Copy the text above into the box below, then click Analyze</span>';
-                try{
-                    var tas=window.parent.document.querySelectorAll('textarea');
-                    tas.forEach(function(ta){
-                        var s=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value').set;
-                        s.call(ta,final);
-                        ta.dispatchEvent(new Event('input',{bubbles:true}));
-                    });
-                }catch(err){}
-            }
-        };
-        r.onerror=function(e){
-            btn.innerHTML='🎙️ Click to Speak';btn.style.background='#1a3a2a';
-            var msg=e.error==='not-allowed'?'❌ Mic blocked — allow mic in browser':'❌ '+e.error+' — try again';
-            status.innerHTML='<span style="color:#dc2626">'+msg+'</span>';
-        };
-        r.onend=function(){btn.innerHTML='🎙️ Speak Again';btn.style.background='#1a3a2a';};
-    }
-    function clearVoice(){
-        document.getElementById('voiceResult').style.display='none';
-        document.getElementById('voiceText').innerText='';
-        document.getElementById('voiceStatus').innerText='';
-    }
-    </script>
     """, unsafe_allow_html=True)
 
+    # ── st.audio_input — works natively, no JS iframe tricks ─────────────────
+    # Requires streamlit >= 1.33.0
+    audio_recording = st.audio_input(
+        label="🎙️ Record your farm description",
+        key="mic_input",
+    )
+
+    # Transcribe button — only shown after audio is recorded
+    transcribed_text = ""
+    if audio_recording is not None:
+        if st.button("🔊 Transcribe Voice", key="transcribe_btn"):
+            with st.spinner("Transcribing your voice..."):
+                audio_bytes = audio_recording.read()
+                transcribed_text = transcribe_audio(audio_bytes)
+            if transcribed_text:
+                st.success(f"✅ Transcribed: **{transcribed_text}**")
+                # Store in session state so it persists into the text area
+                st.session_state["voice_transcription"] = transcribed_text
+            else:
+                st.warning("⚠️ Could not transcribe audio. Please speak clearly and try again, or type your description below.")
+
+    # ── Example buttons ───────────────────────────────────────────────────────
     example_phrases = [
         "My soil is black, I get heavy monsoon rain, temperature is very hot",
         "Red sandy soil, less rainfall, moderate temperature, dry season",
         "Fertile dark soil near coastal area, very humid, lots of rain",
-        "Hill area, cold weather, moderate rain, acidic red soil",
-        "Cotton growing region, hot and dry, black regur soil",
     ]
 
-    st.markdown("**💡 Try an example:**")
-    ex_cols = st.columns(len(example_phrases[:3]))
-    selected_example = ""
-    for i, (col, phrase) in enumerate(zip(ex_cols, example_phrases[:3])):
+    st.markdown("**💡 Or try an example:**")
+    ex_cols = st.columns(3)
+    for i, (col, phrase) in enumerate(zip(ex_cols, example_phrases)):
         with col:
             if st.button(f"Example {i+1}", key=f"ex_{i}"):
-                selected_example = phrase
+                st.session_state["voice_transcription"] = phrase
 
+    # ── Text area — pre-filled by transcription or example ───────────────────
     voice_text = st.text_area(
         "Your farm description:",
-        value=selected_example,
+        value=st.session_state.get("voice_transcription", ""),
         height=100,
         placeholder="E.g. 'My soil is black and fertile, I get heavy monsoon rain for 4 months, very hot temperature...'",
+        key="voice_textarea",
     )
 
+    # ── Analyze ───────────────────────────────────────────────────────────────
     if st.button("🌾 Analyze My Farm", key="voice_btn"):
         if voice_text.strip():
             with st.spinner("Analyzing your farm..."):
@@ -630,24 +558,22 @@ with tab1:
                 crop, confidence, top3, shap_series, input_df = predict_and_explain(features)
                 emoji = CROP_EMOJI.get(crop, '🌱')
 
-            # Result
             st.markdown(f"""
             <div class="result-box">
                 <div class="result-emoji">{emoji}</div>
-                <div style="font-size:0.9rem; opacity:0.7; letter-spacing:2px; text-transform:uppercase;">Recommended Crop</div>
+                <div style="font-size:0.9rem;opacity:0.7;letter-spacing:2px;text-transform:uppercase;">Recommended Crop</div>
                 <div class="result-crop">{crop}</div>
                 <div class="result-confidence">Confidence: {confidence:.1f}%</div>
             </div>
             """, unsafe_allow_html=True)
 
-            col_a, col_b = st.columns([1, 1])
+            col_a, col_b = st.columns(2)
             with col_a:
                 st.markdown("**📋 What we understood from your description:**")
                 for feat, val in features.items():
                     label = FEATURE_LABELS[feat]
-                    unit = '°C' if feat == 'temperature' else '%' if feat == 'humidity' else ' mm' if feat == 'rainfall' else ' kg/ha' if feat in ['N','P','K'] else ''
+                    unit  = '°C' if feat=='temperature' else '%' if feat=='humidity' else ' mm' if feat=='rainfall' else ' kg/ha' if feat in ['N','P','K'] else ''
                     st.markdown(f"- {label}: **{val:.1f}{unit}**")
-
             with col_b:
                 st.markdown("**🥇 Top 3 Alternatives:**")
                 for c, prob in top3:
@@ -656,8 +582,7 @@ with tab1:
                     st.markdown(f"{emoji_alt} **{c.capitalize()}** — {prob:.1f}% {bar}")
 
             st.markdown("**🔍 Why this crop? (Plain English Explanation)**")
-            explanations = plain_english_explanation(crop, shap_series, features)
-            for line in explanations:
+            for line in plain_english_explanation(crop, shap_series, features):
                 st.markdown(f"> {line}")
 
             st.markdown("**📊 SHAP Feature Impact Chart:**")
@@ -665,13 +590,15 @@ with tab1:
             fig = plot_shap(shap_series, crop)
             st.pyplot(fig)
             plt.close()
-
         else:
-            st.warning("Please enter a description of your farm first.")
+            st.warning("Please record your voice or enter a description first.")
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ─── TAB 2: Manual Input ─────────────────────────────────────────────────────
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TAB 2  ·  Manual Input
+# ─────────────────────────────────────────────────────────────────────────────
 with tab2:
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown('<div class="card-title">Manual Soil & Climate Input</div>', unsafe_allow_html=True)
@@ -679,14 +606,14 @@ with tab2:
 
     col1, col2 = st.columns(2)
     with col1:
-        m_N    = st.number_input("Nitrogen (N) kg/ha",    0.0, 140.0, float(N),   step=1.0)
-        m_P    = st.number_input("Phosphorus (P) kg/ha",  5.0, 145.0, float(P),   step=1.0)
-        m_K    = st.number_input("Potassium (K) kg/ha",   5.0, 205.0, float(K),   step=1.0)
-        m_ph   = st.number_input("Soil pH",               3.5, 9.5,   float(ph),  step=0.1)
+        m_N  = st.number_input("Nitrogen (N) kg/ha",   0.0, 140.0, float(N),           step=1.0)
+        m_P  = st.number_input("Phosphorus (P) kg/ha", 5.0, 145.0, float(P),           step=1.0)
+        m_K  = st.number_input("Potassium (K) kg/ha",  5.0, 205.0, float(K),           step=1.0)
+        m_ph = st.number_input("Soil pH",              3.5, 9.5,   float(ph),          step=0.1)
     with col2:
-        m_temp = st.number_input("Temperature (°C)",      5.0, 45.0,  float(temperature), step=0.5)
-        m_hum  = st.number_input("Humidity (%)",          20.0,100.0, float(humidity),    step=1.0)
-        m_rain = st.number_input("Rainfall (mm)",         20.0,300.0, float(rainfall),    step=5.0)
+        m_temp = st.number_input("Temperature (°C)",   5.0, 45.0,  float(temperature), step=0.5)
+        m_hum  = st.number_input("Humidity (%)",      20.0,100.0,  float(humidity),    step=1.0)
+        m_rain = st.number_input("Rainfall (mm)",     20.0,300.0,  float(rainfall),    step=5.0)
 
     if st.button("🌾 Get Recommendation", key="manual_btn"):
         features = dict(N=m_N, P=m_P, K=m_K, temperature=m_temp, humidity=m_hum, ph=m_ph, rainfall=m_rain)
@@ -696,7 +623,7 @@ with tab2:
         st.markdown(f"""
         <div class="result-box">
             <div class="result-emoji">{emoji}</div>
-            <div style="font-size:0.9rem; opacity:0.7; letter-spacing:2px; text-transform:uppercase;">Recommended Crop</div>
+            <div style="font-size:0.9rem;opacity:0.7;letter-spacing:2px;text-transform:uppercase;">Recommended Crop</div>
             <div class="result-crop">{crop}</div>
             <div class="result-confidence">Confidence: {confidence:.1f}%</div>
         </div>
@@ -710,8 +637,7 @@ with tab2:
                 st.markdown(f"{emoji_alt} **{c.capitalize()}** — {prob:.1f}%")
         with col_b:
             st.markdown("**🔍 Explanation:**")
-            explanations = plain_english_explanation(crop, shap_series, features)
-            for line in explanations:
+            for line in plain_english_explanation(crop, shap_series, features):
                 st.markdown(f"> {line}")
 
         st.markdown("**📊 SHAP Feature Impact Chart:**")
@@ -722,9 +648,11 @@ with tab2:
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ─── TAB 3: Model Insights ──────────────────────────────────────────────────
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TAB 3  ·  Model Insights  (black & white theme preserved)
+# ─────────────────────────────────────────────────────────────────────────────
 with tab3:
-    # Full black/white header
     st.markdown("""
     <div style="background:#111;border-radius:16px;padding:28px 32px;margin-bottom:20px;border:1px solid #333;">
         <div style="font-size:0.72rem;letter-spacing:2px;color:#888;text-transform:uppercase;margin-bottom:8px;">How the AI thinks</div>
@@ -748,7 +676,7 @@ with tab3:
         fig2.patch.set_facecolor("#0a0a0a")
         ax2.set_facecolor("#0a0a0a")
         bars = ax2.barh([FEATURE_LABELS[f] for f in importances.index], importances.values,
-                 color="#ffffff", edgecolor="none", height=0.55)
+                        color="#ffffff", edgecolor="none", height=0.55)
         for bar, val in zip(bars, importances.values):
             ax2.text(val+0.002, bar.get_y()+bar.get_height()/2,
                      f"{val:.3f}", va="center", ha="left", fontsize=9, color="#aaaaaa")
@@ -796,8 +724,13 @@ with tab3:
     </div>
     """, unsafe_allow_html=True)
     crops_list = list(le.classes_)
-    crop_cols = st.columns(6)
+    crop_cols  = st.columns(6)
     for i, c in enumerate(crops_list):
         with crop_cols[i % 6]:
             em = CROP_EMOJI.get(c, "🌱")
-            st.markdown(f"<div style='background:#111;border:1px solid #222;border-radius:8px;padding:8px;text-align:center;font-size:0.85rem;color:#fff;margin:3px 0;'>{em}<br>{c.capitalize()}</div>", unsafe_allow_html=True)
+            st.markdown(
+                f"<div style='background:#111;border:1px solid #222;border-radius:8px;"
+                f"padding:8px;text-align:center;font-size:0.85rem;color:#fff;margin:3px 0;'>"
+                f"{em}<br>{c.capitalize()}</div>",
+                unsafe_allow_html=True
+            )
