@@ -485,7 +485,47 @@ with st.sidebar:
     st.markdown("**About FarmVoice AI**")
     st.markdown("Built by **Akash M S** | Presidency University, Bangalore")
     st.markdown("Powered by Random Forest + SHAP XAI")
+from streamlit_webrtc import webrtc_streamer, AudioProcessorBase, WebRtcMode
+import numpy as np
+import speech_recognition as sr
+import tempfile
+import wave
 
+class AudioProcessor(AudioProcessorBase):
+    def __init__(self):
+        self.frames = []
+
+    def recv(self, frame):
+        audio = frame.to_ndarray()
+        self.frames.append(audio)
+        return frame
+
+def speech_to_text(audio_frames):
+    if len(audio_frames) == 0:
+        return ""
+
+    # Save audio temporarily
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+
+    wf = wave.open(temp_file.name, 'wb')
+    wf.setnchannels(1)
+    wf.setsampwidth(2)
+    wf.setframerate(16000)
+
+    audio_data = np.concatenate(audio_frames)
+    wf.writeframes(audio_data.tobytes())
+    wf.close()
+
+    recognizer = sr.Recognizer()
+    with sr.AudioFile(temp_file.name) as source:
+        audio = recognizer.record(source)
+
+    try:
+        text = recognizer.recognize_google(audio)
+    except:
+        text = "Could not understand audio"
+
+    return text
 # ── Main content ──────────────────────────────────────────────────────────────
 tab1, tab2, tab3 = st.tabs(["🎙️ Voice / Text Input", "🎛️ Manual Input", "📊 Model Insights"])
 
