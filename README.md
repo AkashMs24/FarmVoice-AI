@@ -1,7 +1,7 @@
 # 🌾 FarmVoice AI
 ### Explainable Crop Advisory System for Indian Farmers
 
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://your-app-url.streamlit.app)
+[![Streamlit App](https://farmvoice-ai-wzrascjjkgbdbhccc8equa.streamlit.app/)
 ![Python](https://img.shields.io/badge/Python-3.9+-blue)
 ![ML](https://img.shields.io/badge/ML-Random%20Forest-green)
 ![XAI](https://img.shields.io/badge/XAI-SHAP-orange)
