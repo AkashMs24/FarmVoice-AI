@@ -1,6 +1,7 @@
-streamlit==1.32.0
 scikit-learn==1.4.0
 shap==0.44.0
 pandas==2.2.0
 numpy==1.26.4
 matplotlib==3.8.2
+streamlit-webrtc==0.47.7
+av==10.0.0
