@@ -9,9 +9,9 @@ matplotlib.use('Agg')
 import warnings
 warnings.filterwarnings('ignore')
 import io
-import speech_recognition as sr
+import os
 
-# ── Page config ───────────────────────────────────────────────────────────────
+# ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="FarmVoice AI",
     page_icon="🌾",
@@ -19,200 +19,315 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ── Custom CSS ─────────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# DESIGN SYSTEM  —  Black × White × Green editorial
+# ══════════════════════════════════════════════════════════════════════════════
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap');
 
 :root {
-    --green-dark:  #1a3a2a;
-    --green-mid:   #2d6a4f;
-    --green-light: #52b788;
-    --gold:        #d4a017;
-    --cream:       #fef9ef;
-    --earth:       #8b5e3c;
-    --text-dark:   #1a1a1a;
-    --text-muted:  #6b7280;
+    --black:       #0a0a0a;
+    --off-black:   #111111;
+    --dark:        #1a1a1a;
+    --mid:         #2a2a2a;
+    --border:      #2e2e2e;
+    --muted:       #555555;
+    --light-muted: #888888;
+    --off-white:   #f0ede8;
+    --white:       #ffffff;
+    --green:       #52b788;
+    --green-dim:   #2d6a4f;
+    --green-glow:  rgba(82,183,136,0.15);
 }
 
 html, body, [class*="css"] {
     font-family: 'DM Sans', sans-serif;
-    background-color: var(--cream);
-    color: var(--text-dark);
+    background-color: var(--black) !important;
+    color: var(--off-white);
 }
 
-/* Header */
-.hero-header {
-    background: linear-gradient(135deg, var(--green-dark) 0%, var(--green-mid) 60%, var(--green-light) 100%);
-    border-radius: 20px;
-    padding: 40px 48px;
-    margin-bottom: 32px;
+#MainMenu, footer, header { visibility: hidden; }
+.stDeployButton { display: none; }
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: var(--off-black); }
+::-webkit-scrollbar-thumb { background: var(--green-dim); border-radius: 2px; }
+
+/* ══ HERO ══════════════════════════════════════════════════════════════════ */
+.hero {
+    border-bottom: 1px solid var(--border);
+    padding: 48px 0 40px 0;
+    margin-bottom: 40px;
+    position: relative;
+}
+.hero-eyebrow {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 3px;
+    color: var(--green);
+    text-transform: uppercase;
+    margin-bottom: 14px;
+}
+.hero-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(3.5rem, 8vw, 7rem);
+    color: var(--white);
+    line-height: 0.9;
+    margin: 0 0 20px 0;
+    letter-spacing: 2px;
+}
+.hero-title span { color: var(--green); }
+.hero-sub {
+    font-size: 0.95rem;
+    color: var(--light-muted);
+    font-weight: 300;
+    max-width: 520px;
+    line-height: 1.6;
+}
+.hero-rule {
+    position: absolute;
+    right: 0; top: 48px;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 8rem;
+    color: var(--border);
+    line-height: 1;
+    user-select: none;
+    pointer-events: none;
+}
+
+/* ══ STAT STRIP ════════════════════════════════════════════════════════════ */
+.stat-strip {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 40px;
+}
+.stat-cell {
+    background: var(--off-black);
+    padding: 20px 24px;
+    text-align: center;
+}
+.stat-num {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2.4rem;
+    color: var(--white);
+    line-height: 1;
+    display: block;
+}
+.stat-num.green { color: var(--green); }
+.stat-lbl {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-top: 6px;
+    display: block;
+}
+
+/* ══ TABS ═══════════════════════════════════════════════════════════════════ */
+.stTabs [data-baseweb="tab-list"] {
+    background: transparent !important;
+    border-bottom: 1px solid var(--border) !important;
+    border-radius: 0 !important;
+    gap: 0 !important;
+    padding: 0 !important;
+}
+.stTabs [data-baseweb="tab"] {
+    background: transparent !important;
+    color: var(--muted) !important;
+    border-radius: 0 !important;
+    font-family: 'Space Mono', monospace !important;
+    font-size: 0.72rem !important;
+    letter-spacing: 2px !important;
+    text-transform: uppercase !important;
+    padding: 14px 24px !important;
+    border-bottom: 2px solid transparent !important;
+}
+.stTabs [aria-selected="true"] {
+    color: var(--green) !important;
+    border-bottom: 2px solid var(--green) !important;
+}
+
+/* ══ PANELS ══════════════════════════════════════════════════════════════════ */
+.panel {
+    background: var(--off-black);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 32px;
+    margin-bottom: 20px;
+}
+.panel-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.6rem;
+    color: var(--white);
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+}
+.panel-sub {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin-bottom: 24px;
+    line-height: 1.5;
+}
+
+/* ══ MIC INSTRUCTION PANEL ══════════════════════════════════════════════════ */
+.mic-panel {
+    background: var(--dark);
+    border: 1px solid var(--green-dim);
+    border-left: 3px solid var(--green);
+    border-radius: 4px;
+    padding: 20px 24px;
+    margin: 16px 0 24px 0;
+}
+.mic-panel ol {
+    margin: 0;
+    padding-left: 20px;
+    color: var(--light-muted);
+    font-size: 0.88rem;
+    line-height: 2.1;
+}
+.mic-panel ol li strong { color: var(--white); }
+.mic-panel ol li em { color: var(--green); font-style: normal; }
+
+/* ══ RESULT BOX ══════════════════════════════════════════════════════════════ */
+.result-wrap {
+    background: var(--dark);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--green);
+    border-radius: 4px;
+    padding: 40px;
+    text-align: center;
+    margin: 24px 0;
     position: relative;
     overflow: hidden;
 }
-.hero-header::before {
-    content: "🌾🌿🌱";
+.result-wrap::before {
+    content: "";
     position: absolute;
-    right: 32px; top: 20px;
-    font-size: 64px;
-    opacity: 0.15;
-    letter-spacing: 8px;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 0%, var(--green-glow) 0%, transparent 70%);
+    pointer-events: none;
 }
-.hero-title {
-    font-family: 'Playfair Display', serif;
-    font-size: 3rem;
-    font-weight: 900;
-    color: #ffffff;
-    margin: 0 0 8px 0;
-    line-height: 1.1;
-    letter-spacing: -1px;
-}
-.hero-subtitle {
-    color: rgba(255,255,255,0.8);
-    font-size: 1.1rem;
-    font-weight: 300;
-    margin: 0;
-}
-.hero-badge {
-    display: inline-block;
-    background: var(--gold);
-    color: var(--green-dark);
-    font-size: 0.7rem;
-    font-weight: 700;
-    letter-spacing: 2px;
+.result-emoji { font-size: 4rem; display: block; margin-bottom: 8px; }
+.result-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 3px;
+    color: var(--green);
     text-transform: uppercase;
-    padding: 4px 12px;
-    border-radius: 20px;
-    margin-bottom: 16px;
-}
-
-/* Cards */
-.card {
-    background: #ffffff;
-    border-radius: 16px;
-    padding: 28px;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
-    border: 1px solid rgba(0,0,0,0.04);
-    margin-bottom: 20px;
-}
-.card-title {
-    font-family: 'Playfair Display', serif;
-    font-size: 1.3rem;
-    font-weight: 700;
-    color: var(--green-dark);
-    margin-bottom: 4px;
-}
-.card-subtitle {
-    color: var(--text-muted);
-    font-size: 0.85rem;
-    margin-bottom: 20px;
-}
-
-/* Result box */
-.result-box {
-    background: linear-gradient(135deg, var(--green-dark), var(--green-mid));
-    border-radius: 20px;
-    padding: 36px;
-    text-align: center;
-    color: white;
-    margin: 20px 0;
+    margin-bottom: 8px;
 }
 .result-crop {
-    font-family: 'Playfair Display', serif;
-    font-size: 3rem;
-    font-weight: 900;
-    text-transform: capitalize;
-    margin: 12px 0;
-    letter-spacing: -1px;
-}
-.result-confidence {
-    font-size: 1rem;
-    opacity: 0.8;
-    margin-top: 4px;
-}
-.result-emoji { font-size: 4rem; }
-
-/* Stats row */
-.stat-box {
-    background: #111111;
-    border-radius: 12px;
-    padding: 20px;
-    text-align: center;
-    border: 1px solid #333333;
-}
-.stat-num {
-    font-family: 'Playfair Display', serif;
-    font-size: 2rem;
-    font-weight: 900;
-    color: #ffffff;
-}
-.stat-label {
-    font-size: 0.75rem;
-    color: #aaaaaa;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 4rem;
+    color: var(--white);
+    letter-spacing: 3px;
+    line-height: 1;
+    margin-bottom: 8px;
     text-transform: uppercase;
+}
+.result-conf {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--light-muted);
+}
+
+/* ══ ALT ROW ═════════════════════════════════════════════════════════════════ */
+.alt-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.9rem;
+}
+.alt-bar {
+    height: 4px;
+    background: var(--green);
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+/* ══ GROQ STATUS TAG ════════════════════════════════════════════════════════ */
+.groq-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--dark);
+    border: 1px solid var(--green-dim);
+    border-radius: 2px;
+    padding: 4px 12px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--green);
     letter-spacing: 1.5px;
-    margin-top: 4px;
+    text-transform: uppercase;
+    margin-bottom: 20px;
+}
+.groq-dot {
+    width: 6px; height: 6px;
+    background: var(--green);
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+}
+@keyframes pulse {
+    0%,100% { opacity:1; } 50% { opacity:0.3; }
 }
 
-/* Mic instruction box */
-.mic-box {
-    background: linear-gradient(135deg, #f0fdf4, #dcfce7);
-    border: 2px solid var(--green-light);
-    border-radius: 16px;
-    padding: 20px 24px;
-    margin: 16px 0;
-}
-
-/* Sidebar */
+/* ══ SIDEBAR ══════════════════════════════════════════════════════════════════ */
 section[data-testid="stSidebar"] {
-    background: var(--green-dark) !important;
+    background: var(--off-black) !important;
+    border-right: 1px solid var(--border) !important;
 }
-section[data-testid="stSidebar"] * { color: white !important; }
-section[data-testid="stSidebar"] .stSlider > div > div > div {
-    background: var(--green-light) !important;
-}
+section[data-testid="stSidebar"] * { color: var(--off-white) !important; }
 
-/* Buttons */
+/* ══ BUTTONS ══════════════════════════════════════════════════════════════════ */
 .stButton > button {
-    background: linear-gradient(135deg, var(--green-mid), var(--green-dark)) !important;
-    color: white !important;
+    background: var(--white) !important;
+    color: var(--black) !important;
     border: none !important;
-    border-radius: 12px !important;
-    padding: 14px 32px !important;
-    font-size: 1rem !important;
-    font-weight: 600 !important;
-    font-family: 'DM Sans', sans-serif !important;
-    letter-spacing: 0.5px !important;
-    transition: all 0.2s ease !important;
-    width: 100%;
+    border-radius: 2px !important;
+    padding: 14px 28px !important;
+    font-family: 'Space Mono', monospace !important;
+    font-size: 0.75rem !important;
+    letter-spacing: 2px !important;
+    text-transform: uppercase !important;
+    font-weight: 700 !important;
+    transition: all 0.15s ease !important;
+    width: 100% !important;
 }
 .stButton > button:hover {
-    transform: translateY(-2px) !important;
-    box-shadow: 0 8px 24px rgba(45,106,79,0.35) !important;
+    background: var(--green) !important;
+    color: var(--black) !important;
+    transform: translateY(-1px) !important;
 }
 
-#MainMenu {visibility: hidden;}
-footer {visibility: hidden;}
-header {visibility: hidden;}
-
-.stTabs [data-baseweb="tab-list"] {
-    background: #f3f4f6;
-    border-radius: 12px;
-    padding: 4px;
+/* ══ INPUTS ═══════════════════════════════════════════════════════════════════ */
+.stTextArea textarea, .stTextInput input, .stNumberInput input {
+    background: var(--dark) !important;
+    color: var(--white) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 2px !important;
 }
-.stTabs [data-baseweb="tab"] {
-    border-radius: 8px;
-    font-weight: 500;
+.stTextArea textarea:focus, .stTextInput input:focus, .stNumberInput input:focus {
+    border-color: var(--green) !important;
+    box-shadow: 0 0 0 1px var(--green) !important;
 }
-
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: #f1f1f1; }
-::-webkit-scrollbar-thumb { background: var(--green-light); border-radius: 3px; }
+label, .stMarkdown p, .stMarkdown li { color: var(--off-white) !important; }
+.stMarkdown h1,.stMarkdown h2,.stMarkdown h3 { color: var(--white) !important; }
 </style>
 """, unsafe_allow_html=True)
 
 
-# ── Load model ────────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# LOAD MODEL
+# ══════════════════════════════════════════════════════════════════════════════
 @st.cache_resource
 def load_model():
     with open('model.pkl', 'rb') as f:
@@ -226,511 +341,442 @@ def get_explainer(_model):
     return shap.TreeExplainer(_model)
 
 model, le = load_model()
-explainer = get_explainer(model)
+explainer  = get_explainer(model)
 
-# ── Constants ─────────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# CONSTANTS
+# ══════════════════════════════════════════════════════════════════════════════
 CROP_EMOJI = {
-    'rice': '🌾', 'wheat': '🌾', 'maize': '🌽', 'chickpea': '🫘',
-    'kidneybeans': '🫘', 'pigeonpeas': '🫘', 'mothbeans': '🫘',
-    'mungbean': '🫘', 'blackgram': '🫘', 'lentil': '🫘',
-    'pomegranate': '🍎', 'banana': '🍌', 'mango': '🥭',
-    'grapes': '🍇', 'watermelon': '🍉', 'muskmelon': '🍈',
-    'apple': '🍎', 'orange': '🍊', 'papaya': '🍈',
-    'coconut': '🥥', 'cotton': '🌿', 'jute': '🌿',
+    'rice':'🌾','wheat':'🌾','maize':'🌽','chickpea':'🫘',
+    'kidneybeans':'🫘','pigeonpeas':'🫘','mothbeans':'🫘',
+    'mungbean':'🫘','blackgram':'🫘','lentil':'🫘',
+    'pomegranate':'🍎','banana':'🍌','mango':'🥭',
+    'grapes':'🍇','watermelon':'🍉','muskmelon':'🍈',
+    'apple':'🍎','orange':'🍊','papaya':'🍈',
+    'coconut':'🥥','cotton':'🌿','jute':'🌿',
 }
-
 FEATURE_LABELS = {
-    'N': 'Nitrogen (N)', 'P': 'Phosphorus (P)', 'K': 'Potassium (K)',
-    'temperature': 'Temperature', 'humidity': 'Humidity',
-    'ph': 'Soil pH', 'rainfall': 'Rainfall',
+    'N':'Nitrogen (N)','P':'Phosphorus (P)','K':'Potassium (K)',
+    'temperature':'Temperature','humidity':'Humidity',
+    'ph':'Soil pH','rainfall':'Rainfall',
 }
-
 FEATURE_TIPS = {
-    'N': 'Essential for leaf growth. Higher = lush green crops.',
-    'P': 'Root & flower development. Legumes need more.',
-    'K': 'Disease resistance & fruit quality.',
-    'temperature': 'Average seasonal temperature in °C.',
-    'humidity': 'Average relative humidity in your region.',
-    'ph': 'Soil acidity. 7 = neutral, <7 = acidic, >7 = alkaline.',
-    'rainfall': 'Average annual rainfall in mm.',
+    'N':'Essential for leaf growth. Higher = lush green crops.',
+    'P':'Root & flower development. Legumes need more.',
+    'K':'Disease resistance & fruit quality.',
+    'temperature':'Average seasonal temperature in °C.',
+    'humidity':'Average relative humidity in your region.',
+    'ph':'Soil acidity. 7 = neutral, <7 = acidic, >7 = alkaline.',
+    'rainfall':'Average annual rainfall in mm.',
 }
+COLS = ['N','P','K','temperature','humidity','ph','rainfall']
 
 
-# ── Server-side speech-to-text ────────────────────────────────────────────────
-def transcribe_audio(audio_bytes: bytes) -> str:
-    """
-    Transcribe audio bytes using Google Speech Recognition (server-side).
-    Works with the WAV/webm bytes returned by st.audio_input.
-    No iframe hacks, no browser JS, no CORS issues.
-    """
-    recognizer = sr.Recognizer()
-    audio_file = io.BytesIO(audio_bytes)
+# ══════════════════════════════════════════════════════════════════════════════
+# GROQ WHISPER  — 100% server-side, no browser mic required
+# Free tier: 7,200 seconds/day · Accepts WAV, MP3, MP4, M4A, OGG, WEBM, FLAC
+# ══════════════════════════════════════════════════════════════════════════════
+def transcribe_with_groq(audio_bytes: bytes, filename: str = "audio.wav") -> str:
     try:
-        with sr.AudioFile(audio_file) as source:
-            audio_data = recognizer.record(source)
-        text = recognizer.recognize_google(audio_data, language="en-IN")
-        return text
-    except sr.UnknownValueError:
-        return ""
-    except sr.RequestError as e:
-        st.error(f"Speech Recognition API error: {e}")
-        return ""
-    except Exception as e:
-        # Fallback: some browsers send webm; try converting with pydub if available
-        try:
-            from pydub import AudioSegment
-            audio_file.seek(0)
-            sound = AudioSegment.from_file(audio_file)
-            wav_io = io.BytesIO()
-            sound.export(wav_io, format="wav")
-            wav_io.seek(0)
-            with sr.AudioFile(wav_io) as source:
-                audio_data = recognizer.record(source)
-            return recognizer.recognize_google(audio_data, language="en-IN")
-        except Exception:
-            st.warning("Could not process audio format. Please type your description instead.")
+        from groq import Groq
+        api_key = (st.secrets.get("GROQ_API_KEY", "")
+                   or os.environ.get("GROQ_API_KEY", ""))
+        if not api_key:
+            st.error("⚠️  Add GROQ_API_KEY to your Streamlit secrets. Get a free key at console.groq.com")
             return ""
+        client = Groq(api_key=api_key)
+        ext  = filename.rsplit(".", 1)[-1].lower() if "." in filename else "wav"
+        mime = {
+            "wav":"audio/wav","mp3":"audio/mpeg","mp4":"audio/mp4",
+            "m4a":"audio/mp4","ogg":"audio/ogg","webm":"audio/webm",
+            "flac":"audio/flac",
+        }.get(ext, "audio/wav")
+        result = client.audio.transcriptions.create(
+            model          = "whisper-large-v3-turbo",
+            file           = (filename, io.BytesIO(audio_bytes), mime),
+            language       = "en",
+            response_format= "text",
+        )
+        return (result if isinstance(result, str) else result.text).strip()
+    except Exception as e:
+        st.error(f"Groq error: {e}")
+        return ""
 
 
-# ── NLP voice parser ──────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# NLP PARSER
+# ══════════════════════════════════════════════════════════════════════════════
 def parse_voice_input(text: str) -> dict:
-    text = text.lower()
-    features = {}
-
-    if any(w in text for w in ['very fertile', 'very rich soil', 'high nitrogen', 'lots of manure']):
-        features['N'] = 100
-    elif any(w in text for w in ['fertile', 'rich soil', 'good soil', 'dark soil', 'black soil']):
-        features['N'] = 75
-    elif any(w in text for w in ['poor soil', 'low fertility', 'sandy', 'dry land']):
-        features['N'] = 25
-    else:
-        features['N'] = 50
-
-    if any(w in text for w in ['bean', 'pulse', 'legume', 'dal', 'chickpea']):
-        features['P'] = 80
-    elif any(w in text for w in ['fruit', 'mango', 'banana', 'orchard']):
-        features['P'] = 30
-    else:
-        features['P'] = 50
-
-    if any(w in text for w in ['good harvest', 'healthy crop', 'strong plant']):
-        features['K'] = 70
-    elif any(w in text for w in ['disease', 'weak', 'poor yield']):
-        features['K'] = 25
-    else:
-        features['K'] = 45
-
-    if any(w in text for w in ['very hot', 'extreme heat', 'scorching', 'desert']):
-        features['temperature'] = 38
-    elif any(w in text for w in ['hot', 'warm', 'summer', 'tropical']):
-        features['temperature'] = 30
-    elif any(w in text for w in ['cold', 'cool', 'winter', 'hill', 'mountain']):
-        features['temperature'] = 15
-    elif any(w in text for w in ['mild', 'moderate', 'pleasant']):
-        features['temperature'] = 22
-    else:
-        features['temperature'] = 25
-
-    if any(w in text for w in ['very humid', 'coastal', 'very wet', 'paddy', 'rice field']):
-        features['humidity'] = 85
-    elif any(w in text for w in ['humid', 'wet', 'rainy season', 'monsoon']):
-        features['humidity'] = 70
-    elif any(w in text for w in ['dry', 'arid', 'low humidity', 'desert']):
-        features['humidity'] = 35
-    else:
-        features['humidity'] = 55
-
-    if any(w in text for w in ['black soil', 'dark soil', 'cotton soil', 'regur']):
-        features['ph'] = 7.8
-    elif any(w in text for w in ['red soil', 'laterite', 'acidic']):
-        features['ph'] = 6.0
-    elif any(w in text for w in ['sandy', 'light soil']):
-        features['ph'] = 6.5
-    elif any(w in text for w in ['alkaline', 'salt', 'saline']):
-        features['ph'] = 8.2
-    else:
-        features['ph'] = 6.8
-
-    if any(w in text for w in ['heavy rain', 'floods', 'very rainy', '200mm', '300mm']):
-        features['rainfall'] = 250
-    elif any(w in text for w in ['good rain', 'monsoon', 'rainy', '100mm', '150mm']):
-        features['rainfall'] = 140
-    elif any(w in text for w in ['less rain', 'low rain', 'dry season', 'drought', '50mm']):
-        features['rainfall'] = 50
-    elif any(w in text for w in ['moderate rain', 'some rain']):
-        features['rainfall'] = 90
-    else:
-        features['rainfall'] = 100
-
-    return features
+    t = text.lower()
+    return {
+        'N': (100 if any(w in t for w in ['very fertile','very rich','high nitrogen','lots of manure'])
+              else 75 if any(w in t for w in ['fertile','rich soil','good soil','dark soil','black soil'])
+              else 25 if any(w in t for w in ['poor soil','low fertility','sandy','dry land'])
+              else 50),
+        'P': (80 if any(w in t for w in ['bean','pulse','legume','dal','chickpea'])
+              else 30 if any(w in t for w in ['fruit','mango','banana','orchard'])
+              else 50),
+        'K': (70 if any(w in t for w in ['good harvest','healthy crop','strong plant'])
+              else 25 if any(w in t for w in ['disease','weak','poor yield'])
+              else 45),
+        'temperature': (38 if any(w in t for w in ['very hot','extreme heat','scorching','desert'])
+                        else 30 if any(w in t for w in ['hot','warm','summer','tropical'])
+                        else 15 if any(w in t for w in ['cold','cool','winter','hill','mountain'])
+                        else 22 if any(w in t for w in ['mild','moderate','pleasant'])
+                        else 25),
+        'humidity': (85 if any(w in t for w in ['very humid','coastal','very wet','paddy','rice field'])
+                     else 70 if any(w in t for w in ['humid','wet','rainy season','monsoon'])
+                     else 35 if any(w in t for w in ['dry','arid','low humidity'])
+                     else 55),
+        'ph': (7.8 if any(w in t for w in ['black soil','cotton soil','regur'])
+               else 6.0 if any(w in t for w in ['red soil','laterite','acidic'])
+               else 6.5 if any(w in t for w in ['sandy','light soil'])
+               else 8.2 if any(w in t for w in ['alkaline','salt','saline'])
+               else 6.8),
+        'rainfall': (250 if any(w in t for w in ['heavy rain','floods','very rainy'])
+                     else 140 if any(w in t for w in ['good rain','monsoon','rainy'])
+                     else 50  if any(w in t for w in ['less rain','low rain','drought','dry season'])
+                     else 90  if any(w in t for w in ['moderate rain','some rain'])
+                     else 100),
+    }
 
 
-# ── Predict & explain ──────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# PREDICT + EXPLAIN
+# ══════════════════════════════════════════════════════════════════════════════
 def predict_and_explain(features: dict):
-    feature_cols = ['N', 'P', 'K', 'temperature', 'humidity', 'ph', 'rainfall']
-    input_df = pd.DataFrame([features])[feature_cols]
+    df    = pd.DataFrame([features])[COLS]
+    enc   = model.predict(df)[0]
+    proba = model.predict_proba(df)[0]
+    crop  = le.inverse_transform([enc])[0]
+    conf  = proba.max() * 100
+    top3  = [(le.inverse_transform([i])[0], proba[i]*100)
+             for i in np.argsort(proba)[::-1][:3]]
+    sv = explainer.shap_values(df)
+    sp = (sv[enc] if isinstance(sv, list)
+          else sv[:,:,enc] if sv.ndim==3 else sv)
+    shap_s = pd.Series(sp[0] if sp.ndim > 1 else sp, index=COLS)
+    return crop, conf, top3, shap_s, df
 
-    pred_enc   = model.predict(input_df)[0]
-    pred_proba = model.predict_proba(input_df)[0]
-    confidence = pred_proba.max() * 100
-    crop       = le.inverse_transform([pred_enc])[0]
-
-    top3_idx = np.argsort(pred_proba)[::-1][:3]
-    top3 = [(le.inverse_transform([i])[0], pred_proba[i]*100) for i in top3_idx]
-
-    shap_values = explainer.shap_values(input_df)
-    if isinstance(shap_values, list):
-        shap_for_pred = shap_values[pred_enc]
-    else:
-        shap_for_pred = shap_values[:, :, pred_enc] if shap_values.ndim == 3 else shap_values
-
-    shap_series = pd.Series(
-        shap_for_pred[0] if shap_for_pred.ndim > 1 else shap_for_pred,
-        index=feature_cols
-    )
-    return crop, confidence, top3, shap_series, input_df
-
-
-def plain_english_explanation(crop, shap_series, features):
-    sorted_factors = shap_series.abs().sort_values(ascending=False)
-    top3_features  = sorted_factors.index[:3].tolist()
+def plain_english(crop, shap_s, features):
     lines = []
-    for feat in top3_features:
-        val   = shap_series[feat]
-        label = FEATURE_LABELS[feat]
-        raw   = features[feat]
-        unit  = '°C' if feat=='temperature' else '%' if feat=='humidity' else ' mm' if feat=='rainfall' else ''
+    for feat in shap_s.abs().sort_values(ascending=False).index[:3]:
+        val  = shap_s[feat]
+        lbl  = FEATURE_LABELS[feat]
+        raw  = features[feat]
+        unit = '°C' if feat=='temperature' else '%' if feat=='humidity' else ' mm' if feat=='rainfall' else ''
         if val > 0.01:
-            lines.append(f"✅ **{label}** ({raw:.1f}{unit}) strongly favors **{crop}**")
+            lines.append(f"✅ **{lbl}** ({raw:.1f}{unit}) strongly favors **{crop}**")
         elif val < -0.01:
-            lines.append(f"⚠️ **{label}** ({raw:.1f}{unit}) slightly reduces confidence, but {crop} remains best")
+            lines.append(f"⚠️ **{lbl}** ({raw:.1f}{unit}) slightly reduces confidence — {crop} still best")
         else:
-            lines.append(f"➡️ **{label}** ({raw:.1f}{unit}) has neutral effect")
+            lines.append(f"➡️ **{lbl}** ({raw:.1f}{unit}) neutral effect")
     return lines
 
-
-def plot_shap(shap_series, crop):
-    fig, ax = plt.subplots(figsize=(8, 4))
-    fig.patch.set_facecolor('#ffffff')
-    ax.set_facecolor('#f9fafb')
-    colors = ['#2d6a4f' if v > 0 else '#dc2626' for v in shap_series.values]
-    labels = [FEATURE_LABELS.get(f, f) for f in shap_series.index]
-    bars   = ax.barh(labels, shap_series.values, color=colors, edgecolor='none', height=0.6)
-    ax.axvline(x=0, color='#1a1a1a', linewidth=1.2, alpha=0.5)
-    ax.set_xlabel('SHAP Value (Impact on Prediction)', fontsize=10, color='#6b7280')
-    ax.set_title(f'Why the AI recommends {crop.upper()}', fontsize=12,
-                 fontweight='bold', color='#1a3a2a', pad=12)
-    for bar, val in zip(bars, shap_series.values):
-        ax.text(val + (0.005 if val >= 0 else -0.005),
-                bar.get_y() + bar.get_height()/2,
-                f'{val:+.3f}', va='center',
-                ha='left' if val >= 0 else 'right',
-                fontsize=9, color='#374151', fontweight='500')
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.spines['left'].set_visible(False)
-    ax.tick_params(axis='y', labelsize=10, colors='#374151')
-    ax.tick_params(axis='x', labelsize=9, colors='#9ca3af')
-    ax.grid(axis='x', linestyle='--', alpha=0.4, color='#d1d5db')
+def plot_shap(shap_s, crop):
+    fig, ax = plt.subplots(figsize=(8,4))
+    fig.patch.set_facecolor('#111')
+    ax.set_facecolor('#111')
+    colors = ['#52b788' if v>0 else '#ef4444' for v in shap_s.values]
+    labels = [FEATURE_LABELS.get(f,f) for f in shap_s.index]
+    bars   = ax.barh(labels, shap_s.values, color=colors, edgecolor='none', height=0.55)
+    ax.axvline(x=0, color='#444', linewidth=1)
+    ax.set_xlabel('SHAP Value', fontsize=9, color='#555')
+    ax.set_title(f'WHY  {crop.upper()}', fontsize=13, fontweight='bold',
+                 color='#fff', pad=14, fontfamily='monospace')
+    for bar, val in zip(bars, shap_s.values):
+        ax.text(val+(0.004 if val>=0 else -0.004), bar.get_y()+bar.get_height()/2,
+                f'{val:+.3f}', va='center', ha='left' if val>=0 else 'right',
+                fontsize=8, color='#aaa')
+    for sp in ['top','right','left']: ax.spines[sp].set_visible(False)
+    ax.spines['bottom'].set_color('#333')
+    ax.tick_params(axis='y', labelsize=9, colors='#ccc')
+    ax.tick_params(axis='x', labelsize=8, colors='#555')
+    ax.grid(axis='x', linestyle='--', alpha=0.15, color='#444')
     plt.tight_layout()
     return fig
 
+def plot_importance():
+    imp = pd.Series(model.feature_importances_, index=COLS).sort_values(ascending=True)
+    fig, ax = plt.subplots(figsize=(6,4))
+    fig.patch.set_facecolor('#111')
+    ax.set_facecolor('#111')
+    bars = ax.barh([FEATURE_LABELS[f] for f in imp.index], imp.values,
+                   color='#ffffff', edgecolor='none', height=0.5)
+    for bar, val in zip(bars, imp.values):
+        ax.text(val+0.002, bar.get_y()+bar.get_height()/2,
+                f'{val:.3f}', va='center', ha='left', fontsize=8, color='#888')
+    ax.set_xlabel('Importance', fontsize=9, color='#555')
+    ax.set_title('GLOBAL FEATURE IMPORTANCE', fontsize=10,
+                 color='#fff', pad=12, fontfamily='monospace', fontweight='bold')
+    for sp in ['top','right','left']: ax.spines[sp].set_visible(False)
+    ax.spines['bottom'].set_color('#333')
+    ax.tick_params(axis='y', labelsize=9, colors='#aaa')
+    ax.tick_params(axis='x', labelsize=8, colors='#555')
+    ax.grid(axis='x', linestyle='--', alpha=0.15, color='#444')
+    plt.tight_layout()
+    return fig
+
+def render_result(crop, conf, top3, shap_s, features):
+    emoji = CROP_EMOJI.get(crop,'🌱')
+    st.markdown(f"""
+    <div class="result-wrap">
+        <span class="result-emoji">{emoji}</span>
+        <div class="result-label">Recommended Crop</div>
+        <div class="result-crop">{crop}</div>
+        <div class="result-conf">Confidence: {conf:.1f}%</div>
+    </div>""", unsafe_allow_html=True)
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("**TOP 3 ALTERNATIVES**")
+        for c, prob in top3:
+            w = max(4, int(prob * 1.2))
+            st.markdown(f"""
+            <div class="alt-row">
+                <span>{CROP_EMOJI.get(c,'🌱')}</span>
+                <span style="color:#fff;font-weight:500;min-width:110px">{c.capitalize()}</span>
+                <div class="alt-bar" style="width:{w}px;"></div>
+                <span style="color:#888;font-size:0.85rem;font-family:monospace">{prob:.1f}%</span>
+            </div>""", unsafe_allow_html=True)
+    with c2:
+        st.markdown("**WHY THIS CROP**")
+        for line in plain_english(crop, shap_s, features):
+            st.markdown(line)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("**SHAP FEATURE IMPACT**")
+    st.caption("Green = supports this crop  ·  Red = works against it")
+    fig = plot_shap(shap_s, crop)
+    st.pyplot(fig, use_container_width=True)
+    plt.close()
+
 
 # ══════════════════════════════════════════════════════════════════════════════
-# MAIN UI
+# HERO + STATS
 # ══════════════════════════════════════════════════════════════════════════════
-
 st.markdown("""
-<div class="hero-header">
-    <div class="hero-badge">XAI · Agri-Tech · India</div>
-    <div class="hero-title">🌾 FarmVoice AI</div>
-    <p class="hero-subtitle">Explainable Crop Advisory System for Indian Farmers · Voice-Powered · SHAP Explainability</p>
+<div class="hero">
+    <div class="hero-rule">🌾</div>
+    <div class="hero-eyebrow">XAI · Agri-Tech · India · 2024</div>
+    <div class="hero-title">FARM<span>VOICE</span><br>AI</div>
+    <p class="hero-sub">Explainable crop advisory for Indian farmers.<br>
+    Voice-powered via Groq Whisper · SHAP explainability · Random Forest.</p>
+</div>
+
+<div class="stat-strip">
+    <div class="stat-cell">
+        <span class="stat-num">22</span><span class="stat-lbl">Crops</span>
+    </div>
+    <div class="stat-cell">
+        <span class="stat-num green">89%</span><span class="stat-lbl">Accuracy</span>
+    </div>
+    <div class="stat-cell">
+        <span class="stat-num">7</span><span class="stat-lbl">Features</span>
+    </div>
+    <div class="stat-cell">
+        <span class="stat-num green">XAI</span><span class="stat-lbl">SHAP</span>
+    </div>
 </div>
 """, unsafe_allow_html=True)
 
-col1, col2, col3, col4 = st.columns(4)
-with col1:
-    st.markdown('<div class="stat-box"><div class="stat-num">22</div><div class="stat-label">Crops Supported</div></div>', unsafe_allow_html=True)
-with col2:
-    st.markdown('<div class="stat-box"><div class="stat-num">89%</div><div class="stat-label">Model Accuracy</div></div>', unsafe_allow_html=True)
-with col3:
-    st.markdown('<div class="stat-box"><div class="stat-num">7</div><div class="stat-label">Input Features</div></div>', unsafe_allow_html=True)
-with col4:
-    st.markdown('<div class="stat-box"><div class="stat-num">XAI</div><div class="stat-label">SHAP Explainability</div></div>', unsafe_allow_html=True)
 
-st.markdown("<br>", unsafe_allow_html=True)
-
-# ── Sidebar ────────────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# SIDEBAR
+# ══════════════════════════════════════════════════════════════════════════════
 with st.sidebar:
     st.markdown("### 🌱 Farm Parameters")
     st.markdown("---")
     st.markdown("**Soil Nutrients**")
-    N           = st.slider("Nitrogen (N) kg/ha",    0,   140, 60,  help=FEATURE_TIPS['N'])
-    P           = st.slider("Phosphorus (P) kg/ha",  5,   145, 50,  help=FEATURE_TIPS['P'])
-    K           = st.slider("Potassium (K) kg/ha",   5,   205, 50,  help=FEATURE_TIPS['K'])
+    N           = st.slider("Nitrogen (N) kg/ha",   0,   140, 60,  help=FEATURE_TIPS['N'])
+    P           = st.slider("Phosphorus (P) kg/ha", 5,   145, 50,  help=FEATURE_TIPS['P'])
+    K           = st.slider("Potassium (K) kg/ha",  5,   205, 50,  help=FEATURE_TIPS['K'])
     st.markdown("**Climate**")
-    temperature = st.slider("Temperature (°C)",       5,   45,  25,  help=FEATURE_TIPS['temperature'])
-    humidity    = st.slider("Humidity (%)",           20,  100, 60,  help=FEATURE_TIPS['humidity'])
-    rainfall    = st.slider("Rainfall (mm)",          20,  300, 100, help=FEATURE_TIPS['rainfall'])
+    temperature = st.slider("Temperature (°C)",      5,   45,  25,  help=FEATURE_TIPS['temperature'])
+    humidity    = st.slider("Humidity (%)",          20,  100, 60,  help=FEATURE_TIPS['humidity'])
+    rainfall    = st.slider("Rainfall (mm)",         20,  300, 100, help=FEATURE_TIPS['rainfall'])
     st.markdown("**Soil**")
-    ph          = st.slider("Soil pH",                3.5, 9.5, 6.5, step=0.1, help=FEATURE_TIPS['ph'])
+    ph          = st.slider("Soil pH",               3.5, 9.5, 6.5, step=0.1, help=FEATURE_TIPS['ph'])
     st.markdown("---")
-    st.markdown("**About FarmVoice AI**")
-    st.markdown("Built by **Akash M S** | Presidency University, Bangalore")
-    st.markdown("Powered by Random Forest + SHAP XAI")
+    st.markdown("**FarmVoice AI**")
+    st.markdown("Built by **Akash M S**")
+    st.markdown("Presidency University, Bangalore")
+    st.markdown("Random Forest · SHAP · Groq Whisper")
 
 
-# ── Tabs ───────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3 = st.tabs(["🎙️ Voice / Text Input", "🎛️ Manual Input", "📊 Model Insights"])
+# ══════════════════════════════════════════════════════════════════════════════
+# TABS
+# ══════════════════════════════════════════════════════════════════════════════
+tab1, tab2, tab3 = st.tabs(["🎙  Voice / Text", "⚙  Manual Input", "📊  Model Insights"])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# TAB 1  ·  Voice / Text Input
+# TAB 1 — Voice via Groq Whisper upload
 # ─────────────────────────────────────────────────────────────────────────────
 with tab1:
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown('<div class="card-title">Describe Your Farm in Plain Language</div>', unsafe_allow_html=True)
-    st.markdown('<div class="card-subtitle">Record your voice OR type naturally. The AI will understand English, Hindi transliteration, or Kannada transliteration.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="panel">', unsafe_allow_html=True)
+    st.markdown('<div class="panel-title">Describe Your Farm</div>', unsafe_allow_html=True)
+    st.markdown('<div class="panel-sub">Upload a voice recording — Groq Whisper transcribes it instantly on the server. No browser mic permissions, no iframe issues, works everywhere.</div>', unsafe_allow_html=True)
 
-    # ── HOW IT WORKS (mic instructions) ──────────────────────────────────────
+    # Groq API status badge
+    has_key = bool(st.secrets.get("GROQ_API_KEY","") or os.environ.get("GROQ_API_KEY",""))
+    bc = "#52b788" if has_key else "#ef4444"
+    bt = "GROQ WHISPER READY" if has_key else "MISSING: ADD GROQ_API_KEY TO SECRETS"
+    st.markdown(f"""
+    <div class="groq-tag">
+        <div class="groq-dot" style="background:{bc}"></div>
+        <span style="color:{bc}">{bt}</span>
+    </div>""", unsafe_allow_html=True)
+
     st.markdown("""
-    <div class="mic-box">
-        <div style="font-size:1.6rem; margin-bottom:6px;">🎙️ How to use Voice Input</div>
-        <ol style="margin:0; padding-left:18px; color:#2d6a4f; font-size:0.92rem; line-height:1.9;">
-            <li>Click <strong>"Record"</strong> below → browser asks for microphone permission → allow it</li>
-            <li>Speak your farm description clearly (e.g. <em>"My soil is black, monsoon rain, very hot"</em>)</li>
-            <li>Click <strong>"Stop"</strong> when done</li>
-            <li>Click <strong>"🔊 Transcribe Voice"</strong> — your words appear in the text box automatically</li>
-            <li>Click <strong>"🌾 Analyze My Farm"</strong> to get your crop recommendation</li>
+    <div class="mic-panel">
+        <div style="font-family:monospace;font-size:0.7rem;letter-spacing:2px;color:#52b788;margin-bottom:10px;">HOW TO USE VOICE INPUT</div>
+        <ol>
+            <li><strong>Phone:</strong> Open <em>Voice Memo</em> (iPhone) or <em>Recorder</em> (Android) → record your farm description → save/export as MP3 or M4A</li>
+            <li><strong>PC:</strong> Open <em>Sound Recorder</em> (Windows) or <em>QuickTime</em> (Mac) → record → save as WAV or MP3</li>
+            <li>Upload that file using the uploader below</li>
+            <li>Click <strong>"Transcribe with Groq Whisper"</strong> — text appears in the box automatically</li>
+            <li>Click <strong>"Analyze My Farm"</strong></li>
         </ol>
-    </div>
-    """, unsafe_allow_html=True)
+    </div>""", unsafe_allow_html=True)
 
-    # ── st.audio_input — works natively, no JS iframe tricks ─────────────────
-    # Requires streamlit >= 1.33.0
-    audio_recording = st.audio_input(
-        label="🎙️ Record your farm description",
-        key="mic_input",
+    audio_file = st.file_uploader(
+        "Upload voice recording (WAV · MP3 · MP4 · M4A · OGG · WEBM · FLAC)",
+        type=["wav","mp3","mp4","m4a","ogg","webm","flac"],
+        help="Record on your phone/PC and upload. Groq Whisper handles all formats.",
     )
 
-    # Transcribe button — only shown after audio is recorded
-    transcribed_text = ""
-    if audio_recording is not None:
-        if st.button("🔊 Transcribe Voice", key="transcribe_btn"):
-            with st.spinner("Transcribing your voice..."):
-                audio_bytes = audio_recording.read()
-                transcribed_text = transcribe_audio(audio_bytes)
-            if transcribed_text:
-                st.success(f"✅ Transcribed: **{transcribed_text}**")
-                # Store in session state so it persists into the text area
-                st.session_state["voice_transcription"] = transcribed_text
+    if audio_file is not None:
+        st.audio(audio_file, format=audio_file.type)
+        if st.button("🎙  Transcribe with Groq Whisper", key="transcribe_btn"):
+            with st.spinner("Transcribing via Groq Whisper (usually < 3 seconds)..."):
+                audio_bytes = audio_file.read()
+                result = transcribe_with_groq(audio_bytes, filename=audio_file.name)
+            if result:
+                st.success(f"✅ Transcribed: **{result}**")
+                st.session_state["voice_text"] = result
             else:
-                st.warning("⚠️ Could not transcribe audio. Please speak clearly and try again, or type your description below.")
+                st.warning("Could not transcribe. Speak clearly or type your description below.")
 
-    # ── Example buttons ───────────────────────────────────────────────────────
-    example_phrases = [
+    # Examples
+    st.markdown("**OR TRY AN EXAMPLE:**")
+    examples = [
         "My soil is black, I get heavy monsoon rain, temperature is very hot",
         "Red sandy soil, less rainfall, moderate temperature, dry season",
-        "Fertile dark soil near coastal area, very humid, lots of rain",
+        "Fertile dark soil near coast, very humid, lots of rain",
     ]
-
-    st.markdown("**💡 Or try an example:**")
-    ex_cols = st.columns(3)
-    for i, (col, phrase) in enumerate(zip(ex_cols, example_phrases)):
+    ec = st.columns(3)
+    for i, (col, phrase) in enumerate(zip(ec, examples)):
         with col:
             if st.button(f"Example {i+1}", key=f"ex_{i}"):
-                st.session_state["voice_transcription"] = phrase
+                st.session_state["voice_text"] = phrase
 
-    # ── Text area — pre-filled by transcription or example ───────────────────
     voice_text = st.text_area(
-        "Your farm description:",
-        value=st.session_state.get("voice_transcription", ""),
+        "Farm description:",
+        value=st.session_state.get("voice_text",""),
         height=100,
-        placeholder="E.g. 'My soil is black and fertile, I get heavy monsoon rain for 4 months, very hot temperature...'",
+        placeholder="E.g. 'Black fertile soil, heavy monsoon, very hot temperature near coastal area...'",
         key="voice_textarea",
     )
 
-    # ── Analyze ───────────────────────────────────────────────────────────────
-    if st.button("🌾 Analyze My Farm", key="voice_btn"):
+    if st.button("🌾  Analyze My Farm", key="voice_analyze"):
         if voice_text.strip():
-            with st.spinner("Analyzing your farm..."):
+            with st.spinner("Analyzing..."):
                 features = parse_voice_input(voice_text)
-                crop, confidence, top3, shap_series, input_df = predict_and_explain(features)
-                emoji = CROP_EMOJI.get(crop, '🌱')
-
-            st.markdown(f"""
-            <div class="result-box">
-                <div class="result-emoji">{emoji}</div>
-                <div style="font-size:0.9rem;opacity:0.7;letter-spacing:2px;text-transform:uppercase;">Recommended Crop</div>
-                <div class="result-crop">{crop}</div>
-                <div class="result-confidence">Confidence: {confidence:.1f}%</div>
-            </div>
-            """, unsafe_allow_html=True)
-
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.markdown("**📋 What we understood from your description:**")
+                crop, conf, top3, shap_s, _ = predict_and_explain(features)
+            with st.expander("📋 Values extracted from your description"):
                 for feat, val in features.items():
-                    label = FEATURE_LABELS[feat]
-                    unit  = '°C' if feat=='temperature' else '%' if feat=='humidity' else ' mm' if feat=='rainfall' else ' kg/ha' if feat in ['N','P','K'] else ''
-                    st.markdown(f"- {label}: **{val:.1f}{unit}**")
-            with col_b:
-                st.markdown("**🥇 Top 3 Alternatives:**")
-                for c, prob in top3:
-                    emoji_alt = CROP_EMOJI.get(c, '🌱')
-                    bar = "█" * int(prob/5)
-                    st.markdown(f"{emoji_alt} **{c.capitalize()}** — {prob:.1f}% {bar}")
-
-            st.markdown("**🔍 Why this crop? (Plain English Explanation)**")
-            for line in plain_english_explanation(crop, shap_series, features):
-                st.markdown(f"> {line}")
-
-            st.markdown("**📊 SHAP Feature Impact Chart:**")
-            st.caption("Green bars = factors that support this crop | Red bars = factors that work against it")
-            fig = plot_shap(shap_series, crop)
-            st.pyplot(fig)
-            plt.close()
+                    unit = '°C' if feat=='temperature' else '%' if feat=='humidity' else ' mm' if feat=='rainfall' else ' kg/ha' if feat in ['N','P','K'] else ''
+                    st.markdown(f"- {FEATURE_LABELS[feat]}: **{val:.1f}{unit}**")
+            render_result(crop, conf, top3, shap_s, features)
         else:
-            st.warning("Please record your voice or enter a description first.")
+            st.warning("Please upload a voice file or type a description first.")
 
     st.markdown('</div>', unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# TAB 2  ·  Manual Input
+# TAB 2 — Manual Input
 # ─────────────────────────────────────────────────────────────────────────────
 with tab2:
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown('<div class="card-title">Manual Soil & Climate Input</div>', unsafe_allow_html=True)
-    st.markdown('<div class="card-subtitle">Use the sliders on the left sidebar, or enter precise values below.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="panel">', unsafe_allow_html=True)
+    st.markdown('<div class="panel-title">Manual Input</div>', unsafe_allow_html=True)
+    st.markdown('<div class="panel-sub">Enter precise soil and climate values. Sidebar sliders also update these fields.</div>', unsafe_allow_html=True)
 
-    col1, col2 = st.columns(2)
-    with col1:
+    c1, c2 = st.columns(2)
+    with c1:
         m_N  = st.number_input("Nitrogen (N) kg/ha",   0.0, 140.0, float(N),           step=1.0)
         m_P  = st.number_input("Phosphorus (P) kg/ha", 5.0, 145.0, float(P),           step=1.0)
         m_K  = st.number_input("Potassium (K) kg/ha",  5.0, 205.0, float(K),           step=1.0)
         m_ph = st.number_input("Soil pH",              3.5, 9.5,   float(ph),          step=0.1)
-    with col2:
+    with c2:
         m_temp = st.number_input("Temperature (°C)",   5.0, 45.0,  float(temperature), step=0.5)
         m_hum  = st.number_input("Humidity (%)",      20.0,100.0,  float(humidity),    step=1.0)
         m_rain = st.number_input("Rainfall (mm)",     20.0,300.0,  float(rainfall),    step=5.0)
 
-    if st.button("🌾 Get Recommendation", key="manual_btn"):
-        features = dict(N=m_N, P=m_P, K=m_K, temperature=m_temp, humidity=m_hum, ph=m_ph, rainfall=m_rain)
-        crop, confidence, top3, shap_series, input_df = predict_and_explain(features)
-        emoji = CROP_EMOJI.get(crop, '🌱')
-
-        st.markdown(f"""
-        <div class="result-box">
-            <div class="result-emoji">{emoji}</div>
-            <div style="font-size:0.9rem;opacity:0.7;letter-spacing:2px;text-transform:uppercase;">Recommended Crop</div>
-            <div class="result-crop">{crop}</div>
-            <div class="result-confidence">Confidence: {confidence:.1f}%</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        col_a, col_b = st.columns(2)
-        with col_a:
-            st.markdown("**🥇 Top 3 Alternatives:**")
-            for c, prob in top3:
-                emoji_alt = CROP_EMOJI.get(c, '🌱')
-                st.markdown(f"{emoji_alt} **{c.capitalize()}** — {prob:.1f}%")
-        with col_b:
-            st.markdown("**🔍 Explanation:**")
-            for line in plain_english_explanation(crop, shap_series, features):
-                st.markdown(f"> {line}")
-
-        st.markdown("**📊 SHAP Feature Impact Chart:**")
-        st.caption("Green bars = factors favoring this crop | Red = factors against it")
-        fig = plot_shap(shap_series, crop)
-        st.pyplot(fig)
-        plt.close()
+    if st.button("🌾  Get Recommendation", key="manual_btn"):
+        features = dict(N=m_N, P=m_P, K=m_K,
+                        temperature=m_temp, humidity=m_hum,
+                        ph=m_ph, rainfall=m_rain)
+        crop, conf, top3, shap_s, _ = predict_and_explain(features)
+        render_result(crop, conf, top3, shap_s, features)
 
     st.markdown('</div>', unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# TAB 3  ·  Model Insights  (black & white theme preserved)
+# TAB 3 — Model Insights
 # ─────────────────────────────────────────────────────────────────────────────
 with tab3:
     st.markdown("""
-    <div style="background:#111;border-radius:16px;padding:28px 32px;margin-bottom:20px;border:1px solid #333;">
-        <div style="font-size:0.72rem;letter-spacing:2px;color:#888;text-transform:uppercase;margin-bottom:8px;">How the AI thinks</div>
-        <div style="font-family:'Playfair Display',serif;font-size:1.8rem;font-weight:900;color:#fff;margin-bottom:6px;">Model & XAI Insights</div>
-        <div style="color:#aaa;font-size:0.9rem;">Every prediction is explainable. No black boxes. This is the FarmVoice AI promise.</div>
-    </div>
-    """, unsafe_allow_html=True)
+    <div style="border-bottom:1px solid #2e2e2e;padding-bottom:24px;margin-bottom:32px;">
+        <div style="font-family:monospace;font-size:0.7rem;letter-spacing:2px;color:#555;margin-bottom:8px;">HOW THE AI THINKS</div>
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:2.5rem;color:#fff;letter-spacing:2px;">MODEL & XAI INSIGHTS</div>
+        <div style="color:#555;font-size:0.88rem;margin-top:6px;">Every prediction is explainable. No black boxes. This is the FarmVoice AI promise.</div>
+    </div>""", unsafe_allow_html=True)
 
-    col1, col2 = st.columns([1.2, 1])
-
-    with col1:
-        st.markdown("""
-        <div style="background:#000;border-radius:12px;padding:20px;border:1px solid #222;margin-bottom:16px;">
-            <div style="font-size:0.72rem;letter-spacing:2px;color:#888;text-transform:uppercase;margin-bottom:10px;">Global Feature Importance</div>
-        </div>
-        """, unsafe_allow_html=True)
-        importances = pd.Series(model.feature_importances_,
-                                index=["N","P","K","temperature","humidity","ph","rainfall"])
-        importances = importances.sort_values(ascending=True)
-        fig2, ax2 = plt.subplots(figsize=(6,4))
-        fig2.patch.set_facecolor("#0a0a0a")
-        ax2.set_facecolor("#0a0a0a")
-        bars = ax2.barh([FEATURE_LABELS[f] for f in importances.index], importances.values,
-                        color="#ffffff", edgecolor="none", height=0.55)
-        for bar, val in zip(bars, importances.values):
-            ax2.text(val+0.002, bar.get_y()+bar.get_height()/2,
-                     f"{val:.3f}", va="center", ha="left", fontsize=9, color="#aaaaaa")
-        ax2.set_xlabel("Feature Importance", fontsize=9, color="#666")
-        ax2.set_title("Which factors matter most?", fontsize=11, fontweight="bold", color="#ffffff", pad=10)
-        ax2.spines["top"].set_visible(False)
-        ax2.spines["right"].set_visible(False)
-        ax2.spines["left"].set_visible(False)
-        ax2.spines["bottom"].set_color("#333")
-        ax2.tick_params(axis="y", labelsize=9, colors="#aaa")
-        ax2.tick_params(axis="x", labelsize=8, colors="#666")
-        ax2.grid(axis="x", linestyle="--", alpha=0.2, color="#444")
-        plt.tight_layout()
-        st.pyplot(fig2)
+    c1, c2 = st.columns([1.2,1])
+    with c1:
+        fig2 = plot_importance()
+        st.pyplot(fig2, use_container_width=True)
         plt.close()
-
-    with col2:
+    with c2:
         st.markdown("""
-        <div style="background:#000;border-radius:12px;padding:24px;border:1px solid #222;margin-bottom:16px;">
-            <div style="font-size:0.72rem;letter-spacing:2px;color:#888;text-transform:uppercase;margin-bottom:12px;">What is XAI?</div>
-            <div style="font-size:1rem;color:#fff;font-weight:500;margin-bottom:10px;">Explainable AI makes every decision transparent.</div>
-            <div style="color:#aaa;font-size:0.88rem;line-height:1.7;">
-                Instead of a black box that says <span style="color:#fff;font-weight:500;">"grow rice"</span> — FarmVoice AI explains <span style="color:#52b788;font-weight:500;">WHY</span>.<br><br>
-                We use <span style="color:#fff;font-weight:500;">SHAP (SHapley Additive Explanations)</span> — a game-theory technique that assigns each input an exact contribution value per prediction.<br><br>
-                This is the same philosophy <span style="color:#52b788;font-weight:500;">Jacob-AI</span> is built on — farmers must trust and understand AI to act on it.
+        <div style="background:#111;border:1px solid #2e2e2e;border-radius:4px;padding:24px;margin-bottom:16px;">
+            <div style="font-family:monospace;font-size:0.65rem;letter-spacing:2px;color:#555;margin-bottom:12px;">WHAT IS XAI?</div>
+            <div style="color:#fff;font-weight:500;margin-bottom:10px;">Explainable AI makes every decision transparent.</div>
+            <div style="color:#888;font-size:0.85rem;line-height:1.8;">
+                Instead of a black box saying <span style="color:#fff">"grow rice"</span> —
+                FarmVoice AI tells you <span style="color:#52b788;font-weight:600">WHY</span>.<br><br>
+                We use <span style="color:#fff">SHAP</span> (SHapley Additive Explanations) — a game-theory method
+                that assigns each input an exact contribution per prediction.<br><br>
+                Farmers must <em style="color:#52b788">trust</em> AI to act on it.
             </div>
         </div>
-        <div style="background:#111;border-radius:12px;padding:20px;border:1px solid #222;">
-            <div style="font-size:0.72rem;letter-spacing:2px;color:#888;text-transform:uppercase;margin-bottom:12px;">Model Architecture</div>
-            <table style="width:100%;border-collapse:collapse;font-size:0.88rem;">
-                <tr><td style="color:#666;padding:6px 0;border-bottom:1px solid #222;">Algorithm</td><td style="color:#fff;text-align:right;padding:6px 0;border-bottom:1px solid #222;">Random Forest (200 trees)</td></tr>
-                <tr><td style="color:#666;padding:6px 0;border-bottom:1px solid #222;">Accuracy</td><td style="color:#52b788;font-weight:600;text-align:right;padding:6px 0;border-bottom:1px solid #222;">89.1% on test data</td></tr>
-                <tr><td style="color:#666;padding:6px 0;border-bottom:1px solid #222;">Features</td><td style="color:#fff;text-align:right;padding:6px 0;border-bottom:1px solid #222;">7 soil & climate inputs</td></tr>
-                <tr><td style="color:#666;padding:6px 0;border-bottom:1px solid #222;">Crops</td><td style="color:#fff;text-align:right;padding:6px 0;border-bottom:1px solid #222;">22 Indian crops</td></tr>
-                <tr><td style="color:#666;padding:6px 0;border-bottom:1px solid #222;">XAI Method</td><td style="color:#fff;text-align:right;padding:6px 0;border-bottom:1px solid #222;">SHAP TreeExplainer</td></tr>
-                <tr><td style="color:#666;padding:6px 0;border-bottom:1px solid #222;">External API</td><td style="color:#52b788;text-align:right;padding:6px 0;border-bottom:1px solid #222;">None — fully local</td></tr>
-                <tr><td style="color:#666;padding:6px 0;">Deployment</td><td style="color:#fff;text-align:right;padding:6px 0;">Streamlit Cloud</td></tr>
+        <div style="background:#111;border:1px solid #2e2e2e;border-radius:4px;padding:20px;">
+            <div style="font-family:monospace;font-size:0.65rem;letter-spacing:2px;color:#555;margin-bottom:14px;">MODEL ARCHITECTURE</div>
+            <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
+                <tr><td style="color:#555;padding:7px 0;border-bottom:1px solid #1e1e1e;">Algorithm</td><td style="color:#fff;text-align:right;padding:7px 0;border-bottom:1px solid #1e1e1e;">Random Forest · 200 trees</td></tr>
+                <tr><td style="color:#555;padding:7px 0;border-bottom:1px solid #1e1e1e;">Accuracy</td><td style="color:#52b788;font-weight:700;text-align:right;padding:7px 0;border-bottom:1px solid #1e1e1e;">89.1% on test data</td></tr>
+                <tr><td style="color:#555;padding:7px 0;border-bottom:1px solid #1e1e1e;">Features</td><td style="color:#fff;text-align:right;padding:7px 0;border-bottom:1px solid #1e1e1e;">7 soil & climate inputs</td></tr>
+                <tr><td style="color:#555;padding:7px 0;border-bottom:1px solid #1e1e1e;">Crops</td><td style="color:#fff;text-align:right;padding:7px 0;border-bottom:1px solid #1e1e1e;">22 Indian crops</td></tr>
+                <tr><td style="color:#555;padding:7px 0;border-bottom:1px solid #1e1e1e;">XAI Method</td><td style="color:#fff;text-align:right;padding:7px 0;border-bottom:1px solid #1e1e1e;">SHAP TreeExplainer</td></tr>
+                <tr><td style="color:#555;padding:7px 0;border-bottom:1px solid #1e1e1e;">Voice API</td><td style="color:#52b788;text-align:right;padding:7px 0;border-bottom:1px solid #1e1e1e;">Groq Whisper (free)</td></tr>
+                <tr><td style="color:#555;padding:7px 0;">Deployment</td><td style="color:#fff;text-align:right;padding:7px 0;">Streamlit Cloud</td></tr>
             </table>
-        </div>
-        """, unsafe_allow_html=True)
+        </div>""", unsafe_allow_html=True)
 
     st.markdown("""
-    <div style="background:#000;border-radius:12px;padding:20px 24px;margin-top:16px;border:1px solid #222;">
-        <div style="font-size:0.72rem;letter-spacing:2px;color:#888;text-transform:uppercase;margin-bottom:14px;">All 22 Supported Crops</div>
-    </div>
+    <div style="margin-top:32px;margin-bottom:16px;font-family:monospace;font-size:0.65rem;
+    letter-spacing:2px;color:#555;text-transform:uppercase;">All 22 Supported Crops</div>
     """, unsafe_allow_html=True)
     crops_list = list(le.classes_)
     crop_cols  = st.columns(6)
     for i, c in enumerate(crops_list):
         with crop_cols[i % 6]:
-            em = CROP_EMOJI.get(c, "🌱")
+            em = CROP_EMOJI.get(c,"🌱")
             st.markdown(
-                f"<div style='background:#111;border:1px solid #222;border-radius:8px;"
-                f"padding:8px;text-align:center;font-size:0.85rem;color:#fff;margin:3px 0;'>"
-                f"{em}<br>{c.capitalize()}</div>",
-                unsafe_allow_html=True
-            )
+                f"<div style='background:#111;border:1px solid #222;border-radius:3px;"
+                f"padding:10px 6px;text-align:center;font-size:0.82rem;color:#ccc;"
+                f"margin:3px 0;font-family:monospace;'>{em}<br>{c.capitalize()}</div>",
+                unsafe_allow_html=True)
